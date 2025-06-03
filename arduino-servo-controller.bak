@@ -1,0 +1,304 @@
+#include <stdio.h>
+#include <math.h>
+#include <ESP32Servo.h>
+
+#define PI 3.14159265358979323846
+
+// Store last valid angles (global variables, declared before use)
+double lastAngle0 = 90.0;
+double lastAngle1 = 90.0;
+double lastAngle2 = 90.0;
+double lastAngle3 = 90.0;
+
+// Struct to hold the three return angles - moved up before any usage
+typedef struct {
+    double angle0;
+    double angle1;
+    double angle2;
+    double angle3;
+} JointAngles;
+
+// Helper function to convert radians to degrees
+double convertToDegrees(double angle) {
+    return angle * 180.0 / PI;
+}
+
+JointAngles testingTheHeight(double x, double y, double z) {
+    JointAngles result;
+    double angleJoint0 = atan2(y, x);
+    double l = sqrt(x * x + y * y);
+    double link1Length = 8.975;
+    double link2Length = 9.025;
+    double link3Length = 14.5;
+    double theNewTargetBaseDistance = l - link3Length;
+    double max_reach = link1Length + link2Length;
+    double angleForHeight = atan2(z, theNewTargetBaseDistance);
+    double distanceToTarget = sqrt(theNewTargetBaseDistance * theNewTargetBaseDistance + z * z);
+    
+    if (distanceToTarget > max_reach) {
+        Serial.println("Warning: Target point (L=" + String(l) + ", Z=" + String(z) + ") is unreachable!");
+        // Return last known good angles instead of moving to default position
+        result.angle0 = lastAngle0;
+        result.angle1 = lastAngle1;
+        result.angle2 = lastAngle2;
+        result.angle3 = lastAngle3;
+        Serial.println("Keeping last valid position");
+        return result;
+    }
+    
+    double cos_arg = (link1Length * link1Length + distanceToTarget * distanceToTarget - 
+                     link2Length * link2Length) / (2 * link1Length * distanceToTarget);
+    
+    if (cos_arg > 1.0) cos_arg = 1.0;
+    if (cos_arg < -1.0) cos_arg = -1.0;
+    
+    double halfAngleOfJoint1 = acos(cos_arg);
+    double angleJoint1 = halfAngleOfJoint1 + angleForHeight;
+    
+    double cos_arg2 = (link1Length * link1Length + link2Length * link2Length - 
+                      distanceToTarget * distanceToTarget) / (2 * link1Length * link2Length);
+    
+    if (cos_arg2 > 1.0) cos_arg2 = 1.0;
+    if (cos_arg2 < -1.0) cos_arg2 = -1.0;
+    
+    double angleJoint2 = PI - acos(cos_arg2);
+    
+    // Calculate angle3 to keep end effector horizontal
+    // In a robotic arm, to keep the end effector horizontal,
+    // the sum of all joint angles (relative to horizontal) should be constant
+    double angleJoint1Deg = convertToDegrees(angleJoint1);
+    double angleJoint2Deg = convertToDegrees(angleJoint2) + 90; // Adjustment for servo orientation
+    
+    // The sum of angles that keeps end effector horizontal (180 degrees from vertical)
+    double angleJoint3Deg = 180 - angleJoint1Deg - angleJoint2Deg;
+    
+    result.angle0 = constrain(convertToDegrees(angleJoint0) + 90, 0, 180);
+    result.angle1 = constrain(angleJoint1Deg, 0, 180);
+    result.angle2 = constrain(angleJoint2Deg, 0, 180);
+    result.angle3 = constrain(angleJoint3Deg, 0, 180);
+
+    Serial.print("Applied angles: ");
+    Serial.print(result.angle0);
+    Serial.print("°, ");
+    Serial.print(result.angle1);
+    Serial.print("°, ");
+    Serial.print(result.angle2);
+    Serial.print("°, ");
+    Serial.print(result.angle3);
+    Serial.println("°");
+    
+    // Debug for horizontal effector calculation
+    Serial.print("Effector horizontal check: ");
+    Serial.print("angle1 + angle2 + angle3 = ");
+    Serial.print(result.angle1 + result.angle2 + result.angle3);
+    Serial.println("° (should be close to 180° for horizontal)");
+    
+    return result;
+}
+
+// Add servo control
+Servo servo0;
+Servo servo1;
+Servo servo2;
+Servo servo3;
+
+const int servo0Pin = 27;
+const int servo1Pin = 13;
+const int servo2Pin = 12;
+const int servo3Pin = 14;
+const int servoMoveDelay = 15; // Delay between servo position updates in milliseconds
+
+// Function to move servos progressively to target positions with special sequence
+void moveServosProgressively(int targetAngle0, int targetAngle1, int targetAngle2, int targetAngle3) {
+    // Get current positions
+    int currentAngle0 = servo0.read();
+    int currentAngle1 = servo1.read();
+    int currentAngle2 = servo2.read();
+    int currentAngle3 = servo3.read();
+    
+    Serial.println("Moving servos progressively...");
+    
+    // Phase 1: First bring angle2 to 180 degrees to reduce torque on the base
+    Serial.println("Phase 1: Moving servo2 to 180 degrees for lift position");
+    while (currentAngle2 < 180) {
+        currentAngle2++;
+        servo2.write(currentAngle2);
+        
+        // Keep end effector horizontal by adjusting angle3
+        // As angle2 increases, angle3 must decrease to maintain horizontal position
+        if (currentAngle3 > 0) {
+            currentAngle3--;
+            servo3.write(currentAngle3);
+        }
+        
+        delay(servoMoveDelay);
+    }
+    
+    // Phase 2: Now move servo0 (base) to its target position
+    Serial.println("Phase 2: Moving base servo to target position");
+    bool baseAtTarget = false;
+    while (!baseAtTarget) {
+        baseAtTarget = true;
+        
+        // Servo 0 (base)
+        if (currentAngle0 < targetAngle0) {
+            currentAngle0++;
+            servo0.write(currentAngle0);
+            baseAtTarget = false;
+        } else if (currentAngle0 > targetAngle0) {
+            currentAngle0--;
+            servo0.write(currentAngle0);
+            baseAtTarget = false;
+        }
+        
+        delay(servoMoveDelay);
+    }
+    
+    // Phase 3: Now move all servos to their final target positions
+    Serial.println("Phase 3: Moving all servos to final targets");
+    bool allServosAtTarget = false;
+    
+    while (!allServosAtTarget) {
+        allServosAtTarget = true;
+        
+        // Servo 1
+        if (currentAngle1 < targetAngle1) {
+            currentAngle1++;
+            servo1.write(currentAngle1);
+            allServosAtTarget = false;
+        } else if (currentAngle1 > targetAngle1) {
+            currentAngle1--;
+            servo1.write(currentAngle1);
+            allServosAtTarget = false;
+        }
+        
+        // Servo 2
+        if (currentAngle2 < targetAngle2) {
+            currentAngle2--;  // Note: we're likely decreasing from 180
+            servo2.write(currentAngle2);
+            allServosAtTarget = false;
+        } else if (currentAngle2 > targetAngle2) {
+            currentAngle2--;
+            servo2.write(currentAngle2);
+            allServosAtTarget = false;
+        }
+        
+        // Servo 3 - adjust to keep end effector horizontal
+        // Calculate the angle needed to keep end effector horizontal
+        int neededAngle3 = 180 - currentAngle1 - currentAngle2;
+        neededAngle3 = constrain(neededAngle3, 0, 180);
+        
+        if (abs(currentAngle3 - neededAngle3) > 0) {
+            if (currentAngle3 < neededAngle3) {
+                currentAngle3++;
+            } else {
+                currentAngle3--;
+            }
+            servo3.write(currentAngle3);
+            allServosAtTarget = false;
+        }
+        
+        // In the final steps, ensure angle3 is exactly at target
+        if (allServosAtTarget && currentAngle3 != targetAngle3) {
+            if (currentAngle3 < targetAngle3) {
+                currentAngle3++;
+                servo3.write(currentAngle3);
+                allServosAtTarget = false;
+            } else if (currentAngle3 > targetAngle3) {
+                currentAngle3--;
+                servo3.write(currentAngle3);
+                allServosAtTarget = false;
+            }
+        }
+        
+        // Add delay between movements
+        delay(servoMoveDelay);
+    }
+    
+    Serial.println("Servos reached target positions");
+}
+
+void setup() {
+    Serial.begin(115200);
+    Serial.println("Servo Controller Started");
+    
+    // Setup servos
+    servo0.attach(servo0Pin);
+    servo1.attach(servo1Pin);
+    servo2.attach(servo2Pin);
+    servo3.attach(servo3Pin);
+    
+    // Start at middle positions
+    servo0.write(90);
+    servo1.write(90);
+    servo2.write(90);
+    servo3.write(90);
+    
+    delay(1000);
+    Serial.println("Performing initial calibration sequence...");
+    
+    // Demonstrate the new movement pattern
+    // First raise angle2 to reduce torque on base servo
+    for (int i = 90; i <= 180; i++) {
+        servo2.write(i);
+        // Adjust angle3 to keep end effector horizontal
+        servo3.write(180 - i);
+        delay(servoMoveDelay);
+    }
+    
+    delay(1000);
+    
+    // Return to home position
+    moveServosProgressively(90, 90, 90, 90);
+    
+    Serial.println("Enter x and y and z values (format: x,y,z)");
+}
+
+void loop() {
+    if (Serial.available() > 0) {
+        String input = Serial.readStringUntil('\n');
+        input.trim();
+        
+        // Parse the comma-separated values
+        int firstComma = input.indexOf(',');
+        int secondComma = input.indexOf(',', firstComma + 1);
+        
+        if (firstComma > 0 && secondComma > firstComma) {
+            double x = input.substring(0, firstComma).toDouble();
+            double y = input.substring(firstComma + 1, secondComma).toDouble();
+            double z = input.substring(secondComma + 1).toDouble();
+            
+            Serial.print("Received values - x: ");
+            Serial.print(x);
+            Serial.print(", y: ");
+            Serial.print(y);
+            Serial.print(", z: ");
+            Serial.println(z);
+            
+            // Check for reset command (0,0,0)
+            if (x == 0 && y == 0 && z == 0) {
+                // Reset to 90 degrees for all servos progressively
+                Serial.println("Resetting all servos to 90 degrees");
+                moveServosProgressively(90, 90, 90, 90);
+            } else {
+                JointAngles angles = testingTheHeight(x, y, z);
+                
+                // Apply angles to servos progressively
+                moveServosProgressively(
+                    (int)angles.angle0,
+                    (int)angles.angle1, 
+                    (int)angles.angle2,
+                    (int)angles.angle3
+                );
+                
+                // Save the current angles as the last valid position
+                lastAngle0 = angles.angle0;
+                lastAngle1 = angles.angle1;
+                lastAngle2 = angles.angle2;
+                lastAngle3 = angles.angle3;
+            }
+        } else {
+            Serial.println("Invalid format. Use x,y,z (e.g. 10,20,13)");
+        }
+    }
+}
