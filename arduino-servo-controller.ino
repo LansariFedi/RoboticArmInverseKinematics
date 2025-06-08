@@ -99,6 +99,52 @@ void moveProgressively(Servo& servo, int targPos){
 
 Servo servo0, servo1, servo2, servo3, servo4;
 JointAngles result;
+
+
+void targetPosPick(double x, double y, double z){
+    JointAngles result = inverseKinematics(x, y, z);
+    Serial.println("Heading to target");
+
+    servo4.write(110);
+    delay(500);
+    moveProgressively(servo0, result.angle0);
+    delay(500);
+    moveProgressively(servo2, result.angle2);
+    delay(500);
+    moveProgressively(servo1, result.angle1);
+    delay(500);
+    moveProgressively(servo3, result.angle3);
+    delay(1000);
+    servo4.write(65);
+}
+
+void targetPosPlace(double x, double y, double z){
+    JointAngles result = inverseKinematics(x, y, z);
+    Serial.println("Heading to target");
+
+    delay(500);
+    moveProgressively(servo0, result.angle0);
+    delay(500);
+    moveProgressively(servo2, result.angle2);
+    delay(500);
+    moveProgressively(servo1, result.angle1);
+    delay(500);
+    moveProgressively(servo3, result.angle3);
+    delay(1000);
+    servo4.write(110);
+}
+
+void initPos(){
+    Serial.println("Resetting all servos");
+    moveProgressively(servo3, 180);
+    delay(500);
+    moveProgressively(servo2, 180);
+    delay(500);
+    moveProgressively(servo1, 100);
+    delay(500);    
+    moveProgressively(servo0, 90);
+    delay(500);
+}
 //int lastAngle0 = 90;
 //int lastAngle1 = 100;
 //int lastAngle2 = 180;
@@ -130,7 +176,7 @@ void setup(){
     servo1.write(100);
     delay(500);
     servo0.write(90);
-    servo4.write(150);
+    servo4.write(110);
     
     Serial.println("Enter x and y and z values (format: x,y,z): ");
 }
@@ -169,24 +215,13 @@ void loop() {
                 delay(500);
                 
             } else {
-                JointAngles result = inverseKinematics(x, y, z);
-
-                servo4.write(100);
+                targetPosPick(x, y, z);
                 delay(500);
-                moveProgressively(servo0, result.angle0);
+                initPos();
+                delay(2000);
+                targetPosPlace(20, 20, 0);
                 delay(500);
-                moveProgressively(servo2, result.angle2);
-                delay(500);
-                moveProgressively(servo1, result.angle1);
-                delay(500);
-                moveProgressively(servo3, result.angle3);
-                delay(1000);
-                servo4.write(0);
-
-                //lastAngle0 = result.angle0;
-                //lastAngle1 = result.angle1;
-                //lastAngle2 = result.angle2;
-                //lastAngle3 = result.angle3;
+                initPos();
             }
         } else {
             Serial.println("Invalid format. Use x,y,z (e.g. 10,20,13)");
