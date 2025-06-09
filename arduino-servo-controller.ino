@@ -86,12 +86,12 @@ void moveProgressively(Servo& servo, int targPos){
     int currPos = servo.read();
 
     while(currPos < targPos){
-        currPos += 1;
+        currPos += 2;
         servo.write(currPos);
         delay(25);
     }
     while(currPos > targPos){
-        currPos -= 1;
+        currPos -= 2;
         servo.write(currPos);
         delay(25);
     }
@@ -115,7 +115,7 @@ void targetPosPick(double x, double y, double z){
     delay(500);
     moveProgressively(servo3, result.angle3);
     delay(1000);
-    servo4.write(65);
+    servo4.write(60);
 }
 
 void targetPosPlace(double x, double y, double z){
@@ -218,8 +218,8 @@ void loop() {
                 targetPosPick(x, y, z);
                 delay(500);
                 initPos();
-                delay(2000);
-                targetPosPlace(20, 20, 0);
+                delay(500);
+                targetPosPlace(25, 15, -1);
                 delay(500);
                 initPos();
             }
