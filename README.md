@@ -28,7 +28,7 @@ arduino-servo-controller
 
 1. Open the Serial Monitor in the Arduino IDE.
 2. Set the baud rate to 115200.
-3. Enter the height (Z) and length (L) values separated by a space.
+3. Enter the Coordinates (X, Y, Z) values separated by a space.
 4. The calculated joint angles will be displayed in the Serial Monitor, limited to the range of 0 to 180 degrees.
 
 ## Notes
