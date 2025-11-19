@@ -2,6 +2,9 @@
 
 This project is designed to control servo motors using an ESP32 microcontroller. It calculates the joint angles based on user-provided height (Z) and length (L) inputs via serial communication. The output angles are limited to a range between 0 and 180 degrees.
 
+#### Live Demo
+[![Live Demo](https://img.youtube.com/vi/X7s1XCtwdWs/0.jpg)](https://youtu.be/X7s1XCtwdWs)
+
 ## Project Structure
 
 ```
